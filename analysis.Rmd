@@ -1,0 +1,521 @@
+---
+title: "R Notebook"
+output: html_notebook
+---
+
+```{r}
+library(dplyr)
+library(magrittr)
+library(ggplot2)
+library(moments)
+source("../../customized_functions/R/plot_mean_errorbar.R")
+```
+
+```{r}
+# read icwsm dataset
+df_icwsm <- read.csv('data_icwsm.csv', stringsAsFactors = F)
+```
+
+
+```{r}
+# read main dataset
+df_full_history <- read.csv('data/full_history.csv', stringsAsFactors = F) %>% filter(ns == 0)
+df_revert <- read.csv('data/revert.csv', stringsAsFactors = F) %>% filter(page_ns == 0)
+df_editor_info <- read.csv('data/real_editor_list.csv', stringsAsFactors = F)
+df_gini <- read.csv('data/gini.csv', stringsAsFactors = F) %>% filter(page_ns == 0)
+df_leaderblock <- read.csv('data/article_leader.csv', stringsAsFactors = F) %>% filter(page_ns == 0)
+```
+
+```{r}
+# keep only real editors
+df <- merge(
+  x = df_full_history, y = df_editor_info,
+  by = c("editor_name", "editor_id", "editor_ip"), all.y = T)
+# tag revert
+df <- merge(
+  x = df, y = df_revert[,c('reverted_rev_id', 'reverting_rev_id')],
+  by.x = 'rev_id', by.y = 'reverting_rev_id',
+  all.x = T)
+df <- merge(
+  x = df, y = df_revert[,c('reverted_rev_id', 'reverting_rev_id')],
+  by.x = 'rev_id', by.y = 'reverted_rev_id',
+  all.x = T)
+# keep only one year data
+df %<>% mutate(
+  date = as.Date(ts),
+  week = floor(as.numeric((date - as.Date('2005-10-19')) / 7)))
+df %<>% filter(
+  date >= as.Date('2004-10-19') & date < as.Date('2006-10-19'))
+# throw away articles created after the block
+df %<>%
+  group_by(page_id, page_name) %<>%
+  mutate(min_date = min(date)) %<>%
+  filter(min_date < as.Date('2005-10-19')) %<>%
+  ungroup()
+```
+
+```{r}
+# tag new editors (join after 2005-10-19)
+df %<>%
+  group_by(editor_name) %<>%
+  mutate(first_edit_date = min(date)) %<>%
+  mutate(is_new = ifelse(first_edit_date >= as.Date('2005-10-19'), T, F)) %<>%
+  ungroup()
+```
+
+```{r}
+# calculate number of revision and revertings
+df <- df %>%
+  group_by(page_id, page_name) %<>%
+  summarise(
+    num_rev_before = length(rev_id[date >= as.Date('2004-10-19') & date < as.Date('2005-10-19')]),
+    num_rev_after = length(rev_id[date >= as.Date('2005-10-19') & date < as.Date('2006-10-19')]),
+    num_editor_before = length(editor_id[date >= as.Date('2004-10-19') & date < as.Date('2005-10-19')]),
+    num_editor_after = length(editor_id[date >= as.Date('2005-10-19') & date < as.Date('2006-10-19')]),
+    num_editor_after_new = length(editor_id[date >= as.Date('2005-10-19') & date < as.Date('2006-10-19') & is_new == T]),
+    num_editor = length(editor_id),
+    num_reverting_before = length(rev_id[date >= as.Date('2004-10-19') & date < as.Date('2005-10-19') & !is.na(reverting_rev_id)]),
+    num_reverting_after = length(rev_id[date >= as.Date('2005-10-19') & date < as.Date('2006-10-19') & !is.na(reverting_rev_id)]),
+    num_reverted_before = length(rev_id[date >= as.Date('2004-10-19') & date < as.Date('2005-10-19') & !is.na(reverted_rev_id)]),
+    num_reverted_after = length(rev_id[date >= as.Date('2005-10-19') & date < as.Date('2006-10-19') & !is.na(reverted_rev_id)])
+  ) %>% data.frame
+```
+
+```{r}
+# get articles related to china
+df_china <- read.csv("data/chinese_article_url.txt", sep = "\t")
+df <- merge(df, df_china, by.x = "page_name", by.y = "chinese_name", all.x = T)
+df %<>% mutate(is_china = ifelse(is.na(url), F, T))
+df %<>% dplyr::select(-article_name, -url)
+```
+
+```{r}
+# get blocked ratio for leaders
+df <- merge(
+  x = df, y = df_leaderblock %>% dplyr::select(-page_ns),
+  by = c("page_id", "page_name"), all.x = T)
+```
+
+```{r}
+# get fraction of newcomers
+df %<>% mutate(new_frac = num_editor_after_new / num_editor_after)
+```
+
+```{r}
+df %<>% dplyr::select(page_id,
+                      page_name,
+                      is_china,
+                      block_frac,
+                      leader_block_frac_origin,
+                      block_frac_by_leader_origin,
+                      new_frac)
+```
+
+```{r}
+# df_icwsm
+df_icwsm %<>% dplyr::select(-c(count_numrevs_diff,
+                               sqrtcount_numrevs_diff,
+                               mean_numrevs_diff,
+                               sd_numrevs_diff,
+                               upper_numrevs_diff,
+                               lower_numrevs_diff))
+
+df_icwsm %<>% dplyr::select(-c(count_numrevs_diffless5,
+                               sqrtcount_numrevs_diffless5,
+                               mean_numrevs_diffless5,
+                               sd_numrevs_diffless5,
+                               upper_numrevs_diffless5,
+                               lower_numrevs_diffless5))
+
+df_icwsm %<>% dplyr::select(-c(count_numrevs_diffmore5,
+                               sqrtcount_numrevs_diffmore5,
+                               mean_numrevs_diffmore5,
+                               sd_numrevs_diffmore5,
+                               upper_numrevs_diffmore5,
+                               lower_numrevs_diffmore5))
+
+df_icwsm %<>% dplyr::select(-c(count_giniratio_diff,
+                               sqrtcount_giniratio_diff,
+                               mean_giniratio_diff,
+                               sd_giniratio_diff,
+                               upper_giniratio_diff,
+                               lower_giniratio_diff))
+
+df_icwsm %<>% dplyr::select(-c(count_giniratio_diffless5,
+                               sqrtcount_giniratio_diffless5,
+                               mean_giniratio_diffless5,
+                               sd_giniratio_diffless5,
+                               upper_giniratio_diffless5,
+                               lower_giniratio_diffless5))
+
+df_icwsm %<>% dplyr::select(-c(count_giniratio_diffmore5,
+                               sqrtcount_giniratio_diffmore5,
+                               mean_giniratio_diffmore5,
+                               sd_giniratio_diffmore5,
+                               upper_giniratio_diffmore5,
+                               lower_giniratio_diffmore5))
+
+df_icwsm %<>% dplyr::select(-c(count_reverts_diff,
+                               sqrtcount_reverts_diff,
+                               mean_reverts_diff,
+                               sd_reverts_diff,
+                               upper_reverts_diff,
+                               lower_reverts_diff))
+
+df_icwsm %<>% dplyr::select(-c(count_reverts_diffless5,
+                               sqrtcount_reverts_diffless5,
+                               mean_reverts_diffless5,
+                               sd_reverts_diffless5,
+                               upper_reverts_diffless5,
+                               lower_reverts_diffless5))
+
+df_icwsm %<>% dplyr::select(-c(count_reverts_diffmore5,
+                               sqrtcount_reverts_diffmore5,
+                               mean_reverts_diffmore5,
+                               sd_reverts_diffmore5,
+                               upper_reverts_diffmore5,
+                               lower_reverts_diffmore5))
+
+df_icwsm %<>% dplyr::select(-c(leaders1sd_num,
+                               leaders1sd_fracblocked,
+                               count_numlarge,
+                               count_numsmall,
+                               count_numlargereverts,
+                               count_numsmallreverts,
+                               weightreverts,
+                               leaders_num,
+                               leaders_blockedgeo,
+                               nonleadersratio,
+                               withleader,
+                               nonleaders1sd,
+                               withleader1sd,
+                               blockedrevratio10perc,
+                               newuserfrac,
+                               X_merge,
+                               numnewusers,
+                               newfrac,
+                               x))
+
+df <- merge(df, df_icwsm, by.x = "page_id", by.y = "pageid", all.y = T)
+```
+
+```{r}
+# Table 1
+df %>%
+  filter(blockedrevratio > 0) %>%
+  summarise(
+    mean(numrevs_diff),
+    min(numrevs_diff),
+    max(numrevs_diff),
+    sd(numrevs_diff),
+    skewness(numrevs_diff)
+  )
+
+df %>%
+  filter(blockedrevratio > 0 & !is.na(giniratio_diff)) %>%
+  summarise(
+    mean(giniratio_diff),
+    min(giniratio_diff),
+    max(giniratio_diff),
+    sd(giniratio_diff),
+    skewness(giniratio_diff)
+  )
+
+df %>%
+  filter(blockedrevratio > 0 & !is.na(reverts_diff)) %>%
+  summarise(
+    mean(reverts_diff),
+    min(reverts_diff),
+    max(reverts_diff),
+    sd(reverts_diff),
+    skewness(reverts_diff)
+  )
+```
+
+```{r}
+# Table 2
+summary(lm(numrevs_diff ~ numeditors_before + positiveblockedrevratio, df))
+summary(lm(giniratio_diff ~ numeditors_before + positiveblockedrevratio, df))
+summary(lm(reverts_diff ~ numeditors_before + positiveblockedrevratio, df))
+```
+
+```{r}
+# plot activity as a function of blockedrevratio
+df %<>% mutate(blockedrevratio_ceil = ceiling(blockedrevratio / 0.1) * 0.1)
+plot_activity <-
+  plot_mean_errorbar(
+    df %>%
+      filter(blockedrevratio > 0 & !is.na(is_china)) %>%
+      dplyr::select(blockedrevratio_ceil, numrevs_diff, is_china))
+plot_activity$labels$x = "Fraction of blocked editors"
+plot_activity$labels$y = "Relative change in activity"
+plot_activity <- plot_activity +
+  scale_colour_discrete(
+    name = "China related",
+    breaks = c(T,F),
+    labels = c("Yes", "No")) +
+  theme(legend.position = "bottom")
+plot_activity$labels$group = "China related"
+
+# activity = f(blockedrevratio * is_china)
+mod_activity <- lm(
+  numrevs_diff ~ numeditors_before + blockedrevratio*is_china + is_china,
+  df %>% filter(blockedrevratio > 0 & !is.na(is_china))
+)
+summary(mod_activity)
+```
+
+```{r}
+# plot gini as a function of blockedrevratio
+plot_gini <-
+  plot_mean_errorbar(
+    df %>%
+      filter(blockedrevratio > 0 & !is.na(is_china)) %>%
+      dplyr::select(blockedrevratio_ceil, giniratio_diff, is_china))
+plot_gini$labels$x = "Fraction of blocked editors"
+plot_gini$labels$y = "Change in gini"
+plot_gini <- plot_gini +
+  scale_colour_discrete(
+    name = "China related",
+    breaks = c(T,F),
+    labels = c("Yes", "No")) +
+  theme(legend.position = "bottom")
+plot_gini$labels$group = "China related"
+
+# gini = f(blockedrevratio * is_china)
+mod_gini_linear <- lm(
+  giniratio_diff ~ numeditors_before + blockedrevratio*is_china + is_china,
+  df %>% filter(blockedrevratio > 0 & !is.na(is_china))
+)
+summary(mod_gini_linear)
+
+mod_gini_quad <- lm(
+  giniratio_diff ~ numeditors_before + blockedrevratio*is_china + blockedrevratio2*is_china + is_china,
+  df %>% filter(blockedrevratio > 0 & !is.na(is_china))
+)
+summary(mod_gini_quad)
+```
+
+```{r}
+# plot revert as a function of blockedrevratio
+plot_revert <-
+  plot_mean_errorbar(
+    df %>%
+      filter(blockedrevratio > 0 & blockedrevratio < 0.8 & !is.na(is_china)) %>%
+      dplyr::select(blockedrevratio_ceil, reverts_diff, is_china))
+plot_revert$labels$x = "Fraction of blocked editors"
+plot_revert$labels$y = "Change in conflict"
+plot_revert <- plot_revert +
+  scale_colour_discrete(
+    name = "China related",
+    breaks = c(T,F),
+    labels = c("Yes", "No")) +
+  theme(legend.position = "bottom")
+plot_revert$labels$group = "China related"
+
+# reverts = f(blockedrevratio * is_china)
+mod_revert_linear <- lm(
+  reverts_diff ~ numeditors_before + blockedrevratio*is_china + is_china,
+  df %>% filter(blockedrevratio > 0 & !is.na(is_china))
+)
+summary(mod_revert_linear)
+
+mod_revert_quad <- lm(
+  reverts_diff ~ numeditors_before + blockedrevratio*is_china + blockedrevratio2*is_china + is_china,
+  df %>% filter(blockedrevratio > 0 & !is.na(is_china))
+)
+summary(mod_revert_quad)
+```
+
+```{r}
+# get conflict, gini and change in activity
+df %<>% mutate(
+  activity_delta = ifelse(
+    num_rev_before == 0, 
+    yes = NA,
+    no = (num_rev_after - num_rev_before)/num_rev_before))
+df %<>% mutate(
+  log_activity_delta = ifelse(
+    num_rev_before == 0,
+    yes = NA,
+    no = log(1 + num_rev_after) - log(1 + num_rev_before)
+  )
+)
+df %<>% mutate(
+  conflict_before = num_reverting_before / num_rev_before,
+  conflict_after = num_reverting_after / num_rev_after)
+df %<>% mutate(
+  conflict_delta = conflict_after - conflict_before)
+df <- merge(
+  df, df_gini, by = c('page_id', 'page_name'))
+df %<>% mutate(
+  gini_delta = gini_after - gini_before)
+```
+
+```{r}
+# plot activity, gini, conflict as a function of fraction of blocked editors
+df %<>% mutate(block_frac_ceil = ceiling(block_frac / 0.1) * 0.1)
+plot_activity <-
+  plot_mean_errorbar(
+    df %>%
+      filter(block_frac > 0 & num_editor_before >= 2) %>%
+      dplyr::select(block_frac_ceil, log_activity_delta, is_china))
+plot_activity$labels$x = "Fraction of blocked editors"
+plot_activity$labels$y = "Relative change in activity"
+plot_activity$labels$group = "China related"
+plot_activity_fit <- 
+  ggplot(df %>% filter(block_frac > 0 & num_editor_before >= 2)) +
+  geom_smooth(aes(x = block_frac, y = log_activity_delta, color = is_china),
+              formula = y ~ poly(x,2), method = 'lm') +
+  theme(legend.position = "bottom")
+
+plot_gini <- 
+  plot_mean_errorbar(
+    df %>%
+      filter(block_frac > 0 & num_editor_before >= 2) %>%
+      dplyr::select(block_frac_ceil, gini_delta, is_china)) +
+  xlim(0,1)
+plot_gini$labels$x = "Fraction of blocked editors"
+plot_gini$labels$y = "Change in gini"
+plot_gini$labels$group = "China related"
+plot_gini_fit <- 
+  ggplot(df %>% filter(block_frac > 0 & num_editor_before >= 2)) +
+  geom_smooth(aes(x = block_frac, y = gini_delta, color = is_china),
+              formula = y ~ poly(x,2), method = 'lm') +
+  theme(legend.position = "bottom")
+
+plot_conflict <- 
+  plot_mean_errorbar(
+    df %>%
+      filter(block_frac > 0 & num_editor_before >= 2) %>%
+      dplyr::select(block_frac_ceil, conflict_delta, is_china)) +
+  xlim(0, 0.95) + ylim(-0.1,0.1)
+plot_conflict$labels$x = "Fraction of blocked editors"
+plot_conflict$labels$y = "Change in conflict"
+plot_conflict$labels$group = "China related"
+plot_conflict_fit <- 
+  ggplot(df %>% filter(block_frac > 0 & num_editor_before >= 2)) +
+  geom_smooth(aes(x = block_frac, y = conflict_delta, color = is_china),
+              formula = y ~ poly(x,2), method = 'lm') +
+  theme(legend.position = "bottom")
+```
+
+
+```{r}
+# activity as a function of editors blocked
+summary(lm(activity_delta ~ is_china,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+summary(lm(activity_delta ~ poly(block_frac, 1) + is_china + poly(block_frac, 1):is_china,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+summary(lm(activity_delta ~ poly(block_frac, 2) + is_china + poly(block_frac, 2):is_china,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+summary(lm(log_activity_delta ~ poly(block_frac, 2) + is_china,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+
+summary(lm(log_activity_delta ~ poly(block_frac, 2) + is_china + poly(block_frac, 2):is_china,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+# separate regressions for china and non-china articles
+summary(lm(activity_delta ~ poly(block_frac, 1) + num_editor_before,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0 & is_china == T)))
+
+summary(lm(activity_delta ~ poly(block_frac, 1) + num_editor_before,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0 & is_china == F)))
+
+
+summary(lm(activity_delta ~ poly(block_frac, 2) + num_editor_before,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0 & is_china == T)))
+
+summary(lm(activity_delta ~ poly(block_frac, 2) + num_editor_before,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0 & is_china == F)))
+
+# regression for leaders
+summary(lm(activity_delta ~ poly(leader_block_frac_origin, 2),
+           data = df %>% filter(num_editor_before >= 2 & leader_block_frac_origin > 0)))
+
+summary(lm(activity_delta ~ poly(leader_block_frac_iq, 2),
+           data = df %>% filter(num_editor_before >= 2 & leader_block_frac_iq > 0)))
+```
+
+```{r}
+# gini as a function of editors blocked
+summary(lm(
+  gini_delta ~ poly(block_frac, 2) + is_china + poly(block_frac, 2):is_china + num_editor_before,
+  data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+# u-shape as a result of new editors
+summary(lm(
+  gini_delta ~ poly(block_frac, 2) + poly(block_frac, 2):new_frac + num_editor_before,
+  data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+```
+
+```{r}
+summary(lm(conflict_delta ~ poly(block_frac, 2) + is_china + poly(block_frac, 
+    2):is_china + num_editor_before,
+           data = df %>% filter(block_frac > 0)))
+
+# u-shape as a result of new editors
+summary(lm(conflict_delta ~ poly(block_frac, 2) + poly(block_frac, 2):new_frac + num_editor_before,
+           data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+```
+```{r}
+## leader
+# plot activity, gini, conflict as a function of fraction of blocked editors
+df %<>% mutate(leader_block_frac_iq_ceil = ceiling(leader_block_frac_iq / 0.05) * 0.05)
+
+plot_activity <-
+  plot_mean_errorbar(
+    df %>%
+      filter(block_frac > 0 & num_editor_before >= 2) %>%
+      dplyr::select(leader_block_frac_iq_ceil, activity_delta, is_china)) +
+  xlim(0, 0.95)
+plot_activity$labels$x = "Fraction of blocked leaders (IQR)"
+plot_activity$labels$y = "Relative change in activity"
+plot_activity$labels$group = "China related"
+
+plot_gini <- 
+  plot_mean_errorbar(
+    df %>%
+      filter(block_frac > 0 & num_editor_before >= 2) %>%
+      dplyr::select(leader_block_frac_iq_ceil, gini_delta, is_china)) +
+  xlim(0, 0.95)
+plot_gini$labels$x = "Fraction of blocked leaders (IQR)"
+plot_gini$labels$y = "Change in gini"
+plot_gini$labels$group = "China related"
+
+plot_conflict <- 
+  plot_mean_errorbar(
+    df %>%
+      filter(block_frac > 0 & num_editor_before >= 2) %>%
+      dplyr::select(leader_block_frac_iq_ceil, conflict_delta, is_china)) +
+  xlim(0, 0.95)
+plot_conflict$labels$x = "Fraction of blocked leaders (IQR)"
+plot_conflict$labels$y = "Change in conflict"
+plot_conflict$labels$group = "China related"
+```
+
+```{r}
+# u-shape as a result of new editors
+summary(lm(
+  gini_delta ~ poly(block_frac,2) + new_frac + num_editor_before,
+  data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+summary(lm(
+  gini_delta ~ block_frac + num_editor_before,
+  data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+
+summary(lm(
+  gini_delta ~ block_frac + new_frac + block_frac:new_frac + num_editor_before,
+  data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+summary(lm(
+  conflict_delta ~ block_frac + new_frac + block_frac:new_frac + num_editor_before,
+  data = df %>% filter(num_editor_before >= 2 & block_frac > 0)))
+
+```
+
