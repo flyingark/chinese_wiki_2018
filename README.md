@@ -4,7 +4,7 @@ _Collaborator: Ruihan Wang, Daniel Romero, Ceren Budak, Lionel Robert_
 
 This project is an extension based on ICWSM 2017 Chinese Wikipedia paper. The idea is to detect whether the fraction of leaders blocked can explain the results.
 
-The raw data is `data/full_history.csv`. We use this file to generate measures for leaders blocked (with leaders defined in various ways), gini coefficient and reverts. After generating these measures, we combine the data with `data/data_icwsm.csv`.
+The project file is `/home/arkzhang/chinese_wiki_2018`. The data files is under `/data` and the code files is under `/code`. The raw data is `data/full_history.csv`. We use this file as the raw input to generate measures for leaders blocked (with leaders defined in various ways), gini coefficient and reverts. After generating these measures, we combine the data with `data/data_icwsm.csv`.
 
 ## Identify leaders
 To identify leaders, run `get_blocked_frac.py`. This file goes through `data/full_history.csv` and identifies leaders using
