@@ -10,7 +10,7 @@ The project file is `/home/arkzhang/chinese_wiki_2018`. The data files is under 
 To identify leaders, run `get_blocked_frac.py`. This file requires and goes through `data/full_history.csv` and identifies leaders using
   1. geometric rules (tagged as origin in the code)
   2. inter-quartile rules (users whose level of activity is 1.5 inter-quartiles higher than the third quartile)
-  This file generates `article_leader.csv`, which records blocked ratio of leaders.
+This script generates `article_leader.csv`, which records blocked ratio of leaders.
 
   | Fieldname   | Remark |
   | ----------  |---------- |
