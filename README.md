@@ -10,18 +10,18 @@ The project file is `/home/arkzhang/chinese_wiki_2018`. The data files is under 
 To identify leaders, run `get_blocked_frac.py`. This file requires and goes through `data/full_history.csv` and identifies leaders using
   1. geometric rules (tagged as origin in the code)
   2. inter-quartile rules (users whose level of activity is 1.5 inter-quartiles higher than the third quartile)
-This file generates `article_leader.csv`, which records blocked ratio of leaders.
+  This file generates `article_leader.csv`, which records blocked ratio of leaders.
 
-    | Fieldname   | Remark |
-    | ----------  |---------- |
-    | `page_id` | id of article |
-    | `page_name`   | name of article |
-    | `page_ns` | namespace of article |
-    | `blocked_frac` | fraction of editors blocked weighted by numrev |
-    | `leader_block_frac_origin` | among the leaders defined by geometric rule, the fraction that is blocked weighted by numrev |
-    | `block_frac_by_leader_origin` | among all editors blocked, the fraction of leaders defined by geometric rule weighted by numrev |
-    | `leader_block_frac_iq` | among the leaders defined by 5iqr rule, the fraction that is blocked weighted by numrev |
-    | `block_frac_by_leader_iq` | among all editors blocked, the fraction of leaders defined by 5iqr rule weighted by numrev |
+  | Fieldname   | Remark |
+  | ----------  |---------- |
+  | `page_id` | id of article |
+  | `page_name`   | name of article |
+  | `page_ns` | namespace of article |
+  | `blocked_frac` | fraction of editors blocked weighted by numrev |
+  | `leader_block_frac_origin` | among the leaders defined by geometric rule, the fraction that is blocked weighted by numrev |
+  | `block_frac_by_leader_origin` | among all editors blocked, the fraction of leaders defined by geometric rule weighted by numrev |
+  | `leader_block_frac_iq` | among the leaders defined by 5iqr rule, the fraction that is blocked weighted by numrev |
+  | `block_frac_by_leader_iq` | among all editors blocked, the fraction of leaders defined by 5iqr rule weighted by numrev |
 
 ## Analysis
 `analysis.Rmd` is the main analysis file. At the current stage, this file
